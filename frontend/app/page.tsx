@@ -20,8 +20,7 @@
  *  │  • Run button   │                           │    table        │
  *  └─────────────────┴──────────────────────────┴─────────────────┘
  *
- * API: POST http://localhost:8000/api/v1/analyze-thermal (multipart/form-data)
- */
+ * API:https://chitra-ai-chitra-ai-backend.onrender.com/api/v1/analyze-thermal
 
 import React, {
   useCallback,
