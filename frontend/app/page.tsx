@@ -703,8 +703,8 @@ export default function DashboardPage() {
                 uncertaintyHeatmapSrc={result.images.uncertainty_heatmap}
                 bboxOverlaySrc={result.images.bbox_overlay}
                 detections={filteredDetections}
-                imageWidth={result.metrics.resolution_w ?? 256}
-                imageHeight={result.metrics.resolution_h ?? 256}
+                imageWidth={256}
+                imageHeight={256}
               />
             </>
           )}
