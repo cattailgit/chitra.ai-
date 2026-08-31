@@ -119,7 +119,7 @@ async def lifespan(app: FastAPI):
     logger.info("=== Chitra.ai startup: loading models on %s ===", _DEVICE)
 
     # ── UNetGenerator ─────────────────────────────────────────────────────────
-    generator = UNetGenerator(base_ch=64, p_drop=0.2)
+    generator = UNetGenerator(base_ch=16, p_drop=0.2)
     if _UNET_WEIGHTS and os.path.isfile(_UNET_WEIGHTS):
         logger.info("Loading UNet weights from %s", _UNET_WEIGHTS)
         state = torch.load(_UNET_WEIGHTS, map_location=_DEVICE)
@@ -143,8 +143,8 @@ async def lifespan(app: FastAPI):
     app.state.detector = detector
 
     # ── RAG / Granite agent ───────────────────────────────────────────────────
-    agent = build_agent()
-    app.state.agent = agent
+# Disabled on Render free tier to avoid 512 MB startup OOM.
+app.state.agent = None
 
     logger.info("=== Startup complete — service ready ===")
     yield
@@ -202,7 +202,7 @@ async def health() -> dict:
 )
 async def analyze_thermal(
     file:       UploadFile = File(..., description="Single-channel thermal image (GeoTIFF, PNG, JPEG)"),
-    mc_passes:  int        = Form(default=10,   ge=2,   le=100,  description="Monte Carlo forward passes"),
+    mc_passes: int = Form(default=2, ge=2, le=10,  description="Monte Carlo forward passes"),
     latitude:   Optional[float] = Form(default=None, description="Scene centre latitude (WGS-84)"),
     longitude:  Optional[float] = Form(default=None, description="Scene centre longitude (WGS-84)"),
 ) -> JSONResponse:
@@ -290,10 +290,31 @@ async def analyze_thermal(
             "mc_passes":        mc_passes,
         }
 
-        briefing_result = agent.generate_intelligence_briefing(
-            analysis_metrics=analysis_metrics,
-            detections=detections,
-            coordinates=coords_str,
+        if agent is not None:
+    briefing_result = agent.generate_intelligence_briefing(
+        analysis_metrics=analysis_metrics,
+        detections=detections,
+        coordinates=coords_str,
+    )
+
+    briefing_text = briefing_result.briefing_text
+    agent_meta = {
+        "model_id": briefing_result.model_id,
+        "used_fallback": briefing_result.used_fallback,
+        "retrieved_context_ids": briefing_result.retrieved_context_ids,
+    }
+else:
+    briefing_text = (
+        f"Thermal analysis completed. "
+        f"Detected {len(detections)} object(s). "
+        f"Mean uncertainty: {mean_unc:.3f}. "
+        f"Maximum uncertainty: {max_unc:.3f}."
+    )
+    agent_meta = {
+        "model_id": "lightweight-mode",
+        "used_fallback": True,
+        "retrieved_context_ids": [],
+    }
         )
 
         # ══════════════════════════════════════════════════════════════════════
@@ -322,11 +343,8 @@ async def analyze_thermal(
                     "uncertainty_heatmap": heatmap_b64,
                     "bbox_overlay":        overlay_b64,
                 },
-                "agent_briefing": briefing_result.briefing_text,
-                "agent_meta": {
-                    "model_id":               briefing_result.model_id,
-                    "used_fallback":          briefing_result.used_fallback,
-                    "retrieved_context_ids":  briefing_result.retrieved_context_ids,
+                "agent_briefing": briefing_text,
+                "agent_meta": agent_meta,
                 },
             },
         )
