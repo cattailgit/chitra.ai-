@@ -142,9 +142,9 @@ async def lifespan(app: FastAPI):
     )
     app.state.detector = detector
 
-    # ── RAG / Granite agent ───────────────────────────────────────────────────
-# Disabled on Render free tier to avoid 512 MB startup OOM.
-app.state.agent = None
+    # ── RAG / Granite agent ───────────────────────────────────────────────
+    # Disabled on Render free tier to avoid 512 MB startup OOM.
+    app.state.agent = None
 
     logger.info("=== Startup complete — service ready ===")
     yield
