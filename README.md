@@ -482,3 +482,4 @@ See **[docs/ibm_bob_usage.md](docs/ibm_bob_usage.md)** for the complete account 
 <p align="center">
   Built with <strong>IBM Bob</strong> · Powered by <strong>IBM Granite 3.0</strong> on <strong>watsonx.ai</strong>
 </p>
+p.s: Web Service chitra.ai-chitra-ai-backend exceeded its memory limit 
