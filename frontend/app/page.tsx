@@ -4,11 +4,6 @@
  * frontend/app/page.tsx
  * ======================
  * Chitra.ai — Primary Operational Dashboard
- *
- * Satellite IR Reconstruction & Intelligence Engine
- *
- * API:
- * https://chitra-ai-chitra-ai-backend.onrender.com/api/v1/analyze-thermal
  */
 
 import React, {
@@ -18,10 +13,13 @@ import React, {
   DragEvent,
   ChangeEvent,
 } from "react";
-import ImageSlider, { Detection } from "../components/ImageSlider";
+
+import ImageSlider, {
+  Detection,
+} from "../components/ImageSlider";
 
 // ---------------------------------------------------------------------------
-// Types — mirror backend JSON response
+// Types
 // ---------------------------------------------------------------------------
 
 interface AnalysisMetrics {
@@ -52,47 +50,48 @@ interface AnalysisResponse {
   agent_meta: AgentMeta;
 }
 
-type PipelineState = "idle" | "loading" | "success" | "error";
+type PipelineState =
+  | "idle"
+  | "loading"
+  | "success"
+  | "error";
 
 // ---------------------------------------------------------------------------
-// Constants
+// API
 // ---------------------------------------------------------------------------
 
 const API_URL =
   "https://chitra-ai-chitra-ai-backend.onrender.com/api/v1/analyze-thermal";
 
-const ACCEPTED_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/tiff",
-  "image/tif",
-];
+const HEALTH_URL =
+  "https://chitra-ai-chitra-ai-backend.onrender.com/health";
 
-const ACCEPTED_EXT = ".png,.jpg,.jpeg,.tif,.tiff";
+const ACCEPTED_EXT =
+  ".png,.jpg,.jpeg,.tif,.tiff";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatUncertainty(v: number): string {
-  return (v * 100).toFixed(2) + " %";
+function formatUncertainty(value: number): string {
+  return `${(value * 100).toFixed(2)} %`;
 }
 
-function uncertaintyColour(v: number): string {
-  if (v < 0.2) return "text-green-400";
-  if (v < 0.4) return "text-yellow-300";
-  if (v < 0.6) return "text-orange-400";
+function uncertaintyColour(value: number): string {
+  if (value < 0.2) return "text-green-400";
+  if (value < 0.4) return "text-yellow-300";
+  if (value < 0.6) return "text-orange-400";
   return "text-red-400";
 }
 
-function adjConfColour(v: number): string {
-  if (v >= 0.6) return "text-green-400";
-  if (v >= 0.3) return "text-yellow-300";
+function adjConfColour(value: number): string {
+  if (value >= 0.6) return "text-green-400";
+  if (value >= 0.3) return "text-yellow-300";
   return "text-red-400";
 }
 
 // ---------------------------------------------------------------------------
-// Telemetry badge
+// Telemetry
 // ---------------------------------------------------------------------------
 
 interface TelemetryBadgeProps {
@@ -110,7 +109,9 @@ function TelemetryBadge({
 }: TelemetryBadgeProps) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-2.5">
-      <div className="shrink-0 text-gray-400">{icon}</div>
+      <div className="shrink-0 text-gray-400">
+        {icon}
+      </div>
 
       <div className="min-w-0">
         <p className="text-[10px] uppercase tracking-wider text-gray-500">
@@ -138,7 +139,7 @@ interface LabelledSliderProps {
   max: number;
   step?: number;
   unit?: string;
-  onChange: (v: number) => void;
+  onChange: (value: number) => void;
   accentClass?: string;
 }
 
@@ -155,7 +156,9 @@ function LabelledSlider({
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
-        <span className="text-gray-400">{label}</span>
+        <span className="text-gray-400">
+          {label}
+        </span>
 
         <span className="font-mono text-blue-300">
           {value}
@@ -169,7 +172,9 @@ function LabelledSlider({
         max={max}
         step={step}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(event) =>
+          onChange(Number(event.target.value))
+        }
         className={`h-1.5 w-full cursor-pointer appearance-none rounded-full bg-gray-700 ${accentClass}`}
       />
 
@@ -193,7 +198,9 @@ function SectionHeading({
   return (
     <h2 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-gray-500">
       <span className="h-px flex-1 bg-gray-700/80" />
+
       {children}
+
       <span className="h-px flex-1 bg-gray-700/80" />
     </h2>
   );
@@ -203,7 +210,11 @@ function SectionHeading({
 // Spinner
 // ---------------------------------------------------------------------------
 
-function Spinner({ size = 16 }: { size?: number }) {
+function Spinner({
+  size = 16,
+}: {
+  size?: number;
+}) {
   return (
     <svg
       className="animate-spin"
@@ -211,7 +222,6 @@ function Spinner({ size = 16 }: { size?: number }) {
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      xmlns="http://www.w3.org/2000/svg"
     >
       <circle
         className="opacity-25"
@@ -232,11 +242,15 @@ function Spinner({ size = 16 }: { size?: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Briefing renderer
+// Briefing
 // ---------------------------------------------------------------------------
 
-function BriefingRenderer({ text }: { text: string }) {
-  const SECTION_HEADINGS = [
+function BriefingRenderer({
+  text,
+}: {
+  text: string;
+}) {
+  const headings = [
     "VISUAL RECONSTRUCTION INTEGRITY",
     "TACTICAL OBJECT ASSESSMENT",
     "OPERATIONAL GUIDANCE",
@@ -246,26 +260,28 @@ function BriefingRenderer({ text }: { text: string }) {
 
   return (
     <div className="space-y-1 font-mono text-xs leading-relaxed text-gray-300">
-      {lines.map((line, i) => {
+      {lines.map((line, index) => {
         const trimmed = line.trim();
 
         if (/^[─━═\-]{4,}$/.test(trimmed)) {
           return (
             <hr
-              key={i}
+              key={index}
               className="my-1 border-gray-700"
             />
           );
         }
 
-        const isHeading = SECTION_HEADINGS.some((h) =>
-          trimmed.toUpperCase().includes(h)
+        const isHeading = headings.some((heading) =>
+          trimmed
+            .toUpperCase()
+            .includes(heading)
         );
 
         if (isHeading) {
           return (
             <p
-              key={i}
+              key={index}
               className="mt-3 text-[11px] font-bold uppercase tracking-wide text-blue-300"
             >
               {trimmed}
@@ -273,10 +289,13 @@ function BriefingRenderer({ text }: { text: string }) {
           );
         }
 
-        if (trimmed.startsWith("-") || trimmed.startsWith("•")) {
+        if (
+          trimmed.startsWith("-") ||
+          trimmed.startsWith("•")
+        ) {
           return (
             <p
-              key={i}
+              key={index}
               className="pl-3 text-gray-300"
             >
               {trimmed}
@@ -284,10 +303,14 @@ function BriefingRenderer({ text }: { text: string }) {
           );
         }
 
-        if (trimmed.toUpperCase().startsWith("WARNING:")) {
+        if (
+          trimmed
+            .toUpperCase()
+            .startsWith("WARNING:")
+        ) {
           return (
             <p
-              key={i}
+              key={index}
               className="font-semibold text-orange-300"
             >
               {trimmed}
@@ -295,10 +318,14 @@ function BriefingRenderer({ text }: { text: string }) {
           );
         }
 
-        if (trimmed.toUpperCase().startsWith("NOTE:")) {
+        if (
+          trimmed
+            .toUpperCase()
+            .startsWith("NOTE:")
+        ) {
           return (
             <p
-              key={i}
+              key={index}
               className="italic text-yellow-400/80"
             >
               {trimmed}
@@ -307,10 +334,19 @@ function BriefingRenderer({ text }: { text: string }) {
         }
 
         if (!trimmed) {
-          return <div key={i} className="h-1" />;
+          return (
+            <div
+              key={index}
+              className="h-1"
+            />
+          );
         }
 
-        return <p key={i}>{trimmed}</p>;
+        return (
+          <p key={index}>
+            {trimmed}
+          </p>
+        );
       })}
     </div>
   );
@@ -327,7 +363,8 @@ function DetectionRow({
   det: Detection;
   index: number;
 }) {
-  const rowUnc = det.mean_uncertainty;
+  const uncertainty =
+    det.mean_uncertainty;
 
   return (
     <tr className="border-b border-gray-800 transition-colors hover:bg-gray-800/40">
@@ -347,10 +384,12 @@ function DetectionRow({
 
       <td
         className={`px-2 py-1.5 text-right font-mono text-xs ${uncertaintyColour(
-          rowUnc
+          uncertainty
         )}`}
       >
-        {formatUncertainty(rowUnc)}
+        {formatUncertainty(
+          uncertainty
+        )}
       </td>
 
       <td
@@ -358,15 +397,8 @@ function DetectionRow({
           det.adjusted_confidence
         )}`}
       >
-        {det.adjusted_confidence.toFixed(3)}
-
-        {rowUnc > 0.4 && (
-          <span
-            className="ml-1 text-orange-400"
-            title="High-uncertainty region"
-          >
-            ⚠
-          </span>
+        {det.adjusted_confidence.toFixed(
+          3
         )}
       </td>
     </tr>
@@ -374,12 +406,12 @@ function DetectionRow({
 }
 
 // ---------------------------------------------------------------------------
-// Upload dropzone
+// Upload
 // ---------------------------------------------------------------------------
 
 interface DropzoneProps {
   file: File | null;
-  onFile: (f: File) => void;
+  onFile: (file: File) => void;
   disabled?: boolean;
 }
 
@@ -388,17 +420,21 @@ function Dropzone({
   onFile,
   disabled = false,
 }: DropzoneProps) {
-  const [dragOver, setDragOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] =
+    useState(false);
+
+  const inputRef =
+    useRef<HTMLInputElement>(null);
 
   const handleDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
       setDragOver(false);
 
       if (disabled) return;
 
-      const dropped = e.dataTransfer.files[0];
+      const dropped =
+        event.dataTransfer.files[0];
 
       if (dropped) {
         onFile(dropped);
@@ -408,11 +444,14 @@ function Dropzone({
   );
 
   const handleChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      const picked = e.target.files?.[0];
+    (
+      event: ChangeEvent<HTMLInputElement>
+    ) => {
+      const selected =
+        event.target.files?.[0];
 
-      if (picked) {
-        onFile(picked);
+      if (selected) {
+        onFile(selected);
       }
     },
     [onFile]
@@ -423,26 +462,34 @@ function Dropzone({
       role="button"
       tabIndex={disabled ? -1 : 0}
       aria-label="Upload thermal image"
-      onClick={() =>
-        !disabled && inputRef.current?.click()
-      }
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && !disabled) {
+      onClick={() => {
+        if (!disabled) {
           inputRef.current?.click();
         }
       }}
-      onDragOver={(e) => {
-        e.preventDefault();
+      onKeyDown={(event) => {
+        if (
+          event.key === "Enter" &&
+          !disabled
+        ) {
+          inputRef.current?.click();
+        }
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
 
         if (!disabled) {
           setDragOver(true);
         }
       }}
-      onDragLeave={() => setDragOver(false)}
+      onDragLeave={() =>
+        setDragOver(false)
+      }
       onDrop={handleDrop}
       className={[
         "relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed",
         "px-4 py-6 text-center transition-colors",
+
         disabled
           ? "cursor-not-allowed border-gray-700 bg-gray-800/20 opacity-50"
           : dragOver
@@ -470,7 +517,10 @@ function Dropzone({
           </p>
 
           <p className="mt-0.5 text-[10px] text-gray-500">
-            {(file.size / 1024).toFixed(1)} KB — click to replace
+            {(file.size / 1024).toFixed(
+              1
+            )}{" "}
+            KB — click to replace
           </p>
         </>
       ) : (
@@ -629,155 +679,261 @@ function IconTimer({
 }
 
 // ---------------------------------------------------------------------------
-// Main dashboard
+// Main
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] =
+    useState<File | null>(null);
 
-  const [mcPasses, setMcPasses] = useState(10);
+  // Backend supports maximum 10.
+  const [mcPasses, setMcPasses] =
+    useState(10);
 
-  const [confThresh, setConfThresh] = useState(25);
+  const [confThresh, setConfThresh] =
+    useState(25);
 
-  const [latitude, setLatitude] = useState("");
+  const [latitude, setLatitude] =
+    useState("");
 
-  const [longitude, setLongitude] = useState("");
+  const [longitude, setLongitude] =
+    useState("");
 
-  const [pipelineState, setPipelineState] =
-    useState<PipelineState>("idle");
+  const [
+    pipelineState,
+    setPipelineState,
+  ] = useState<PipelineState>("idle");
 
   const [result, setResult] =
-    useState<AnalysisResponse | null>(null);
+    useState<AnalysisResponse | null>(
+      null
+    );
 
-  const [errorMsg, setErrorMsg] = useState("");
+  const [errorMsg, setErrorMsg] =
+    useState("");
 
   const [execMs, setExecMs] =
     useState<number | null>(null);
 
-  const [thermalPreviewUrl, setThermalPreviewUrl] =
-    useState("");
+  const [
+    thermalPreviewUrl,
+    setThermalPreviewUrl,
+  ] = useState("");
 
   // -------------------------------------------------------------------------
   // File selection
   // -------------------------------------------------------------------------
 
-  const handleFileSelected = useCallback(
-    (f: File) => {
-      const validType =
-        ACCEPTED_TYPES.includes(f.type) ||
-        /\.(png|jpe?g|tiff?)$/i.test(f.name);
+  const handleFileSelected =
+    useCallback((selectedFile: File) => {
+      const valid =
+        selectedFile.type ===
+          "image/png" ||
+        selectedFile.type ===
+          "image/jpeg" ||
+        selectedFile.type ===
+          "image/tiff" ||
+        /\.(png|jpe?g|tiff?)$/i.test(
+          selectedFile.name
+        );
 
-      if (!validType) {
+      if (!valid) {
         setErrorMsg(
           "Unsupported file type. Please upload PNG, JPEG, or GeoTIFF."
         );
+
         setPipelineState("error");
         return;
       }
 
-      setFile(f);
+      if (thermalPreviewUrl) {
+        URL.revokeObjectURL(
+          thermalPreviewUrl
+        );
+      }
 
-      setThermalPreviewUrl(
-        URL.createObjectURL(f)
-      );
+      const preview =
+        URL.createObjectURL(
+          selectedFile
+        );
 
+      setFile(selectedFile);
+      setThermalPreviewUrl(preview);
       setResult(null);
       setErrorMsg("");
       setExecMs(null);
       setPipelineState("idle");
-    },
-    []
-  );
+    }, [thermalPreviewUrl]);
 
   // -------------------------------------------------------------------------
   // Run analysis
   // -------------------------------------------------------------------------
 
-  const handleRun = useCallback(async () => {
-    if (!file) return;
-
-    setPipelineState("loading");
-    setErrorMsg("");
-    setResult(null);
-
-    const t0 = performance.now();
-
-    try {
-      const form = new FormData();
-
-      form.append("file", file);
-
-      form.append(
-        "mc_passes",
-        String(mcPasses)
-      );
-
-      if (latitude.trim()) {
-        form.append(
-          "latitude",
-          latitude.trim()
+  const handleRun =
+    useCallback(async () => {
+      if (!file) {
+        setErrorMsg(
+          "Please upload a thermal image first."
         );
+        return;
       }
 
-      if (longitude.trim()) {
-        form.append(
-          "longitude",
-          longitude.trim()
-        );
-      }
+      setPipelineState("loading");
+      setErrorMsg("");
+      setResult(null);
+      setExecMs(null);
 
-      const resp = await fetch(API_URL, {
-        method: "POST",
-        body: form,
-      });
+      const start =
+        performance.now();
 
-      const elapsed =
-        performance.now() - t0;
-
-      setExecMs(elapsed);
-
-      if (!resp.ok) {
-        let detail = `HTTP ${resp.status}`;
-
+      try {
+        /*
+         * Wake Render backend first.
+         *
+         * Render free instances can sleep.
+         */
         try {
-          const body = await resp.json();
-
-          if (body?.detail) {
-            detail = body.detail;
-          }
+          await fetch(HEALTH_URL, {
+            method: "GET",
+            cache: "no-store",
+          });
         } catch {
-          // Ignore JSON parsing errors.
+          // The actual analysis request below
+          // will provide the real error.
         }
 
-        throw new Error(detail);
-      }
+        const form =
+          new FormData();
 
-      const data: AnalysisResponse =
-        await resp.json();
-
-      if (data.status !== "success") {
-        throw new Error(
-          "Backend returned non-success status."
+        form.append(
+          "file",
+          file,
+          file.name
         );
+
+        form.append(
+          "mc_passes",
+          String(
+            Math.min(
+              Math.max(mcPasses, 2),
+              10
+            )
+          )
+        );
+
+        if (latitude.trim()) {
+          form.append(
+            "latitude",
+            latitude.trim()
+          );
+        }
+
+        if (longitude.trim()) {
+          form.append(
+            "longitude",
+            longitude.trim()
+          );
+        }
+
+        const response =
+          await fetch(API_URL, {
+            method: "POST",
+            body: form,
+            cache: "no-store",
+          });
+
+        const elapsed =
+          performance.now() - start;
+
+        setExecMs(elapsed);
+
+        const contentType =
+          response.headers.get(
+            "content-type"
+          ) || "";
+
+        if (!response.ok) {
+          let message =
+            `Backend error: HTTP ${response.status}`;
+
+          if (
+            contentType.includes(
+              "application/json"
+            )
+          ) {
+            try {
+              const body =
+                await response.json();
+
+              if (body?.detail) {
+                message =
+                  String(body.detail);
+              }
+            } catch {
+              // Keep HTTP error.
+            }
+          }
+
+          throw new Error(message);
+        }
+
+        if (
+          !contentType.includes(
+            "application/json"
+          )
+        ) {
+          throw new Error(
+            "Backend returned an invalid response. Check the Render deployment."
+          );
+        }
+
+        const data =
+          (await response.json()) as AnalysisResponse;
+
+        if (
+          !data ||
+          data.status !== "success"
+        ) {
+          throw new Error(
+            "Backend returned an unsuccessful analysis result."
+          );
+        }
+
+        setResult(data);
+        setPipelineState("success");
+      } catch (error: unknown) {
+        const elapsed =
+          performance.now() - start;
+
+        setExecMs(elapsed);
+
+        let message =
+          "Unable to connect to the Chitra.ai backend.";
+
+        if (error instanceof Error) {
+          message = error.message;
+        }
+
+        /*
+         * Give a useful message instead of the useless
+         * "Failed to fetch".
+         */
+        if (
+          message === "Failed to fetch"
+        ) {
+          message =
+            "Backend connection failed. Render may be waking up, or the backend CORS configuration needs to allow the Vercel domain.";
+        }
+
+        setErrorMsg(message);
+        setPipelineState("error");
       }
-
-      setResult(data);
-      setPipelineState("success");
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : String(err);
-
-      setErrorMsg(msg);
-      setPipelineState("error");
-    }
-  }, [
-    file,
-    mcPasses,
-    latitude,
-    longitude,
-  ]);
+    }, [
+      file,
+      mcPasses,
+      latitude,
+      longitude,
+    ]);
 
   const isLoading =
     pipelineState === "loading";
@@ -786,13 +942,14 @@ export default function DashboardPage() {
   // Detection filtering
   // -------------------------------------------------------------------------
 
-  const filteredDetections = result
-    ? result.detections.filter(
-        (d) =>
-          d.adjusted_confidence >=
-          confThresh / 100
-      )
-    : [];
+  const filteredDetections =
+    result
+      ? result.detections.filter(
+          (detection) =>
+            detection.adjusted_confidence >=
+            confThresh / 100
+        )
+      : [];
 
   // -------------------------------------------------------------------------
   // Render
@@ -801,12 +958,14 @@ export default function DashboardPage() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gray-950 text-gray-100">
 
-      {/* TOP NAVIGATION */}
+      {/* HEADER */}
 
       <header className="z-30 flex h-12 shrink-0 items-center justify-between border-b border-gray-800 bg-gray-950/95 px-5 backdrop-blur-sm">
+
         <div className="flex items-center gap-3">
 
           <div className="flex h-7 w-7 items-center justify-center rounded-md border border-blue-500/40 bg-blue-600/20">
+
             <svg
               viewBox="0 0 20 20"
               fill="none"
@@ -835,9 +994,11 @@ export default function DashboardPage() {
                 strokeLinecap="round"
               />
             </svg>
+
           </div>
 
           <div className="flex items-baseline gap-2">
+
             <span className="text-sm font-bold tracking-tight text-white">
               Chitra.ai
             </span>
@@ -850,20 +1011,24 @@ export default function DashboardPage() {
               Satellite IR Reconstruction &amp;
               Intelligence Engine
             </span>
+
           </div>
+
         </div>
 
         <div className="flex items-center gap-3 text-xs">
+
           {result && (
             <span
-              className={[
-                "rounded-full px-2.5 py-0.5 font-medium",
-                result.agent_meta.used_fallback
-                  ? "border border-yellow-700/50 bg-yellow-900/50 text-yellow-300"
-                  : "border border-blue-700/50 bg-blue-900/50 text-blue-300",
-              ].join(" ")}
+              className={
+                result.agent_meta
+                  .used_fallback
+                  ? "rounded-full border border-yellow-700/50 bg-yellow-900/50 px-2.5 py-0.5 font-medium text-yellow-300"
+                  : "rounded-full border border-blue-700/50 bg-blue-900/50 px-2.5 py-0.5 font-medium text-blue-300"
+              }
             >
-              {result.agent_meta.used_fallback
+              {result.agent_meta
+                .used_fallback
                 ? "Fallback Agent"
                 : "IBM Granite 3.0 Live"}
             </span>
@@ -872,14 +1037,16 @@ export default function DashboardPage() {
           <span className="rounded-full border border-gray-700 bg-gray-800 px-2.5 py-0.5 text-gray-400">
             v1.0
           </span>
+
         </div>
+
       </header>
 
-      {/* THREE COLUMN BODY */}
+      {/* BODY */}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
 
-        {/* LEFT SIDEBAR */}
+        {/* LEFT */}
 
         <aside className="flex w-64 shrink-0 flex-col gap-4 overflow-y-auto border-r border-gray-800 bg-gray-900/60 p-4 backdrop-blur-sm">
 
@@ -900,8 +1067,8 @@ export default function DashboardPage() {
           <LabelledSlider
             label="Monte Carlo Passes"
             value={mcPasses}
-            min={5}
-            max={30}
+            min={2}
+            max={10}
             step={1}
             onChange={setMcPasses}
             accentClass="accent-blue-500"
@@ -925,6 +1092,7 @@ export default function DashboardPage() {
           <div className="space-y-2">
 
             <div className="space-y-1">
+
               <label className="text-xs text-gray-400">
                 Latitude
               </label>
@@ -934,15 +1102,19 @@ export default function DashboardPage() {
                 step="0.00001"
                 placeholder="e.g. 37.77452"
                 value={latitude}
-                onChange={(e) =>
-                  setLatitude(e.target.value)
+                onChange={(event) =>
+                  setLatitude(
+                    event.target.value
+                  )
                 }
                 disabled={isLoading}
                 className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none disabled:opacity-50"
               />
+
             </div>
 
             <div className="space-y-1">
+
               <label className="text-xs text-gray-400">
                 Longitude
               </label>
@@ -952,12 +1124,15 @@ export default function DashboardPage() {
                 step="0.00001"
                 placeholder="e.g. -122.41941"
                 value={longitude}
-                onChange={(e) =>
-                  setLongitude(e.target.value)
+                onChange={(event) =>
+                  setLongitude(
+                    event.target.value
+                  )
                 }
                 disabled={isLoading}
                 className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none disabled:opacity-50"
               />
+
             </div>
 
           </div>
@@ -965,23 +1140,30 @@ export default function DashboardPage() {
           {/* RUN BUTTON */}
 
           <div className="mt-auto pt-2">
+
             <button
+              type="button"
               onClick={handleRun}
-              disabled={!file || isLoading}
+              disabled={
+                !file || isLoading
+              }
               className={[
                 "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3",
                 "text-sm font-semibold transition-all duration-200",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+
                 !file || isLoading
                   ? "cursor-not-allowed border border-gray-700 bg-gray-800 text-gray-500"
                   : "bg-blue-600 text-white shadow-lg shadow-blue-900/30 hover:bg-blue-500 active:scale-[0.98]",
               ].join(" ")}
             >
+
               {isLoading ? (
                 <>
                   <Spinner size={16} />
+
                   <span>
-                    Analysing…
+                    Analysing...
                   </span>
                 </>
               ) : (
@@ -994,36 +1176,44 @@ export default function DashboardPage() {
                   </span>
                 </>
               )}
+
             </button>
 
             {isLoading && (
               <p className="mt-2 animate-pulse text-center text-[10px] text-gray-500">
                 Running {mcPasses} MC-Dropout
-                passes…
+                passes...
               </p>
             )}
+
           </div>
+
         </aside>
 
-        {/* CENTER WORKSPACE */}
+        {/* CENTER */}
 
         <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
 
           {/* ERROR */}
 
-          {pipelineState === "error" &&
+          {pipelineState ===
+            "error" &&
             errorMsg && (
               <div className="rounded-xl border border-red-700/60 bg-red-900/20 px-4 py-3 text-sm text-red-300">
+
                 <span className="font-semibold">
                   Pipeline error:{" "}
                 </span>
+
                 {errorMsg}
+
               </div>
             )}
 
-          {/* EMPTY STATE */}
+          {/* IDLE */}
 
-          {pipelineState === "idle" &&
+          {pipelineState ===
+            "idle" &&
             !result && (
               <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
 
@@ -1061,6 +1251,7 @@ export default function DashboardPage() {
                         opacity="0.4"
                       />
                     </svg>
+
                   </div>
 
                   <h3 className="mb-1 text-base font-semibold text-gray-300">
@@ -1068,16 +1259,18 @@ export default function DashboardPage() {
                   </h3>
 
                   <p className="max-w-xs text-xs text-gray-500">
-                    Upload a single-channel Landsat
-                    thermal band (ST_B10) in the
-                    sidebar and click{" "}
+                    Upload a single-channel
+                    Landsat thermal band
+                    (ST_B10) and click{" "}
                     <strong className="text-gray-400">
-                      Run Reconstruction &amp;
+                      Run Reconstruction &
                       Analysis
                     </strong>
                     .
                   </p>
+
                 </div>
+
               </div>
             )}
 
@@ -1085,58 +1278,82 @@ export default function DashboardPage() {
 
           {isLoading && (
             <div className="space-y-3">
-              <div className="h-8 w-48 animate-pulse rounded-lg bg-gray-800" />
+
+              <div className="flex items-center gap-2">
+
+                <Spinner size={18} />
+
+                <p className="text-sm text-blue-300">
+                  Running thermal
+                  reconstruction...
+                </p>
+
+              </div>
 
               <div className="aspect-video w-full animate-pulse rounded-xl bg-gray-800" />
 
               <div className="h-4 w-full animate-pulse rounded bg-gray-800" />
+
             </div>
           )}
 
-          {/* RESULT */}
+          {/* RESULTS */}
 
-          {result && !isLoading && (
-            <>
-              <div className="flex items-center justify-between">
+          {result &&
+            !isLoading && (
+              <>
+                <div className="flex items-center justify-between">
 
-                <h1 className="text-sm font-semibold text-gray-200">
-                  Scene Analysis
+                  <h1 className="text-sm font-semibold text-gray-200">
+                    Scene Analysis
 
-                  {execMs !== null && (
-                    <span className="ml-3 text-xs font-normal text-gray-500">
-                      completed in{" "}
-                      {(execMs / 1000).toFixed(2)} s
-                    </span>
-                  )}
-                </h1>
+                    {execMs !== null && (
+                      <span className="ml-3 text-xs font-normal text-gray-500">
+                        completed in{" "}
+                        {(
+                          execMs / 1000
+                        ).toFixed(2)}{" "}
+                        s
+                      </span>
+                    )}
+                  </h1>
 
-                <span className="rounded-full border border-green-700/50 bg-green-900/20 px-2.5 py-0.5 text-xs text-green-400">
-                  ●{" "}
-                  {result.metrics.mc_passes_executed}{" "}
-                  passes
-                </span>
-              </div>
+                  <span className="rounded-full border border-green-700/50 bg-green-900/20 px-2.5 py-0.5 text-xs text-green-400">
+                    {result.metrics
+                      .mc_passes_executed}{" "}
+                    passes
+                  </span>
 
-              <ImageSlider
-                thermalSrc={thermalPreviewUrl}
-                reconstructedRgbSrc={
-                  result.images.reconstructed_rgb
-                }
-                uncertaintyHeatmapSrc={
-                  result.images.uncertainty_heatmap
-                }
-                bboxOverlaySrc={
-                  result.images.bbox_overlay
-                }
-                detections={filteredDetections}
-                imageWidth={256}
-                imageHeight={256}
-              />
-            </>
-          )}
+                </div>
+
+                <ImageSlider
+                  thermalSrc={
+                    thermalPreviewUrl
+                  }
+                  reconstructedRgbSrc={
+                    result.images
+                      .reconstructed_rgb
+                  }
+                  uncertaintyHeatmapSrc={
+                    result.images
+                      .uncertainty_heatmap
+                  }
+                  bboxOverlaySrc={
+                    result.images
+                      .bbox_overlay
+                  }
+                  detections={
+                    filteredDetections
+                  }
+                  imageWidth={256}
+                  imageHeight={256}
+                />
+              </>
+            )}
+
         </main>
 
-        {/* RIGHT INTELLIGENCE PANEL */}
+        {/* RIGHT */}
 
         <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-gray-800 bg-gray-900/60 backdrop-blur-sm">
 
@@ -1158,8 +1375,8 @@ export default function DashboardPage() {
                   label="Device"
                   value={result.metrics.device.toUpperCase()}
                   valueClass={
-                    result.metrics.device ===
-                    "cuda"
+                    result.metrics
+                      .device === "cuda"
                       ? "text-green-400"
                       : "text-blue-300"
                   }
@@ -1185,10 +1402,12 @@ export default function DashboardPage() {
                   }
                   label="Mean Unc."
                   value={formatUncertainty(
-                    result.metrics.mean_uncertainty
+                    result.metrics
+                      .mean_uncertainty
                   )}
                   valueClass={uncertaintyColour(
-                    result.metrics.mean_uncertainty
+                    result.metrics
+                      .mean_uncertainty
                   )}
                 />
 
@@ -1198,24 +1417,31 @@ export default function DashboardPage() {
                   }
                   label="Max Unc."
                   value={formatUncertainty(
-                    result.metrics.max_uncertainty
+                    result.metrics
+                      .max_uncertainty
                   )}
                   valueClass={uncertaintyColour(
-                    result.metrics.max_uncertainty
+                    result.metrics
+                      .max_uncertainty
                   )}
                 />
 
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {[...Array(4)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-14 animate-pulse rounded-lg bg-gray-800"
-                  />
-                ))}
+
+                {[0, 1, 2, 3].map(
+                  (item) => (
+                    <div
+                      key={item}
+                      className="h-14 animate-pulse rounded-lg bg-gray-800"
+                    />
+                  )
+                )}
+
               </div>
             )}
+
           </div>
 
           {/* AGENT */}
@@ -1228,22 +1454,26 @@ export default function DashboardPage() {
                 <div
                   className={[
                     "h-2 w-2 rounded-full",
-                    result.agent_meta.used_fallback
+                    result.agent_meta
+                      .used_fallback
                       ? "bg-yellow-400"
                       : "animate-pulse bg-blue-400",
                   ].join(" ")}
                 />
 
                 <span className="text-xs text-gray-400">
-                  {result.agent_meta.used_fallback
-                    ? "GraniteFallbackAgent (offline)"
+                  {result.agent_meta
+                    .used_fallback
+                    ? "Granite Fallback Agent"
                     : "IBM Granite 3.0 — Live inference"}
                 </span>
+
               </div>
 
               <p className="mt-1 truncate font-mono text-[10px] text-gray-600">
                 {result.agent_meta.model_id}
               </p>
+
             </div>
           )}
 
@@ -1257,30 +1487,38 @@ export default function DashboardPage() {
 
             {result ? (
               <div className="max-h-72 flex-1 overflow-y-auto rounded-lg border border-gray-800 bg-gray-950/60 p-3">
+
                 <BriefingRenderer
-                  text={result.agent_briefing}
+                  text={
+                    result.agent_briefing
+                  }
                 />
+
               </div>
             ) : isLoading ? (
               <div className="space-y-2">
+
                 {[100, 90, 95, 70, 85].map(
-                  (w, i) => (
+                  (width, index) => (
                     <div
-                      key={i}
+                      key={index}
                       className="h-3 animate-pulse rounded bg-gray-800"
                       style={{
-                        width: `${w}%`,
+                        width: `${width}%`,
                       }}
                     />
                   )
                 )}
+
               </div>
             ) : (
               <div className="rounded-lg border border-gray-800 bg-gray-900/40 px-4 py-6 text-center">
+
                 <p className="text-xs text-gray-600">
-                  Briefing will appear here after
-                  analysis.
+                  Briefing will appear
+                  here after analysis.
                 </p>
+
               </div>
             )}
 
@@ -1291,12 +1529,14 @@ export default function DashboardPage() {
             </SectionHeading>
 
             {result &&
-            result.detections.length > 0 ? (
+            result.detections.length >
+              0 ? (
               <div className="overflow-x-auto rounded-lg border border-gray-800">
 
-                <table className="w-full min-w-full border-collapse text-left">
+                <table className="w-full border-collapse text-left">
 
                   <thead>
+
                     <tr className="border-b border-gray-700 bg-gray-800/60">
 
                       <th className="py-2 pl-3 pr-2 text-[10px] uppercase tracking-wider text-gray-500">
@@ -1320,60 +1560,74 @@ export default function DashboardPage() {
                       </th>
 
                     </tr>
+
                   </thead>
 
                   <tbody>
+
                     {filteredDetections.map(
-                      (det, i) => (
+                      (detection, index) => (
                         <DetectionRow
-                          key={i}
-                          det={det}
-                          index={i}
+                          key={`${detection.class_name}-${index}`}
+                          det={detection}
+                          index={index}
                         />
                       )
                     )}
+
                   </tbody>
 
                 </table>
 
                 {filteredDetections.length <
-                  result.detections.length && (
+                  result.detections
+                    .length && (
                   <p className="border-t border-gray-800 px-3 py-1.5 text-[10px] text-gray-600">
                     {result.detections.length -
                       filteredDetections.length}{" "}
                     detection(s) hidden by
                     confidence threshold (
-                    {confThresh} %)
+                    {confThresh}%)
                   </p>
                 )}
+
               </div>
             ) : result &&
-              result.detections.length === 0 ? (
+              result.detections.length ===
+                0 ? (
               <div className="rounded-lg border border-gray-800 bg-gray-900/40 px-4 py-5 text-center">
+
                 <p className="text-xs text-gray-500">
-                  No objects detected in this
-                  scene.
+                  No objects detected in
+                  this scene.
                 </p>
+
               </div>
             ) : isLoading ? (
               <div className="space-y-1.5">
-                {[...Array(4)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-8 animate-pulse rounded bg-gray-800"
-                  />
-                ))}
+
+                {[0, 1, 2, 3].map(
+                  (item) => (
+                    <div
+                      key={item}
+                      className="h-8 animate-pulse rounded bg-gray-800"
+                    />
+                  )
+                )}
+
               </div>
             ) : (
               <div className="rounded-lg border border-gray-800 bg-gray-900/40 px-4 py-5 text-center">
+
                 <p className="text-xs text-gray-600">
-                  Detection results will appear
-                  after analysis.
+                  Detection results will
+                  appear after analysis.
                 </p>
+
               </div>
             )}
 
-            {/* RAG CONTEXT */}
+            {/* RAG */}
 
             {result &&
               result.agent_meta
@@ -1399,12 +1653,16 @@ export default function DashboardPage() {
                     )}
 
                   </div>
+
                 </div>
               )}
 
           </div>
+
         </aside>
+
       </div>
+
     </div>
   );
 }
