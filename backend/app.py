@@ -56,6 +56,7 @@ _FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
 _ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://chitraai-ga1w-9sl3raara-avananditha-6523s-projects.vercel.app",
 ]
 
 if _FRONTEND_URL:
@@ -211,25 +212,41 @@ app = FastAPI(
 # CORS
 # ---------------------------------------------------------------------------
 
+# Production frontend
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
+
+_ALLOWED_ORIGINS = [
+    # Local development
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+
+    # Current Vercel deployment
+    "https://chitraai-ga1w-9sl3raara-avananditha-6523s-projects.vercel.app",
+]
+
+# Add FRONTEND_URL from Render environment variables if provided
+if _FRONTEND_URL and _FRONTEND_URL not in _ALLOWED_ORIGINS:
+    _ALLOWED_ORIGINS.append(_FRONTEND_URL)
+
+
 app.add_middleware(
     CORSMiddleware,
 
-    # Explicit origins
+    # Explicit allowed origins
     allow_origins=_ALLOWED_ORIGINS,
 
-    # IMPORTANT:
-    # Allows Vercel preview deployments such as:
-    # https://chitra-ai-xxxxx.vercel.app
-    # https://chitra-ai-git-main-xxxxx.vercel.app
-    allow_origin_regex=(
-        r"https://.*\.vercel\.app"
-    ),
+    # Allow Vercel preview deployments
+    allow_origin_regex=r"https://.*\.vercel\.app",
 
+    # Required for browser requests
     allow_credentials=True,
+
+    # Allow POST, OPTIONS, GET, etc.
     allow_methods=["*"],
+
+    # Allow Content-Type, Authorization, etc.
     allow_headers=["*"],
 )
-
 
 # ---------------------------------------------------------------------------
 # Health check
