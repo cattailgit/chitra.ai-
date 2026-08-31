@@ -32,6 +32,10 @@ from backend.models.uncertainty import run_mc_inference
 from backend.utils.preprocessing import normalize_thermal
 
 
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(
@@ -41,13 +45,21 @@ logging.basicConfig(
 
 
 # ---------------------------------------------------------------------------
-# Constants / configuration
+# Configuration
 # ---------------------------------------------------------------------------
+
+# Your deployed frontend can be supplied through FRONTEND_URL.
+# Example:
+# FRONTEND_URL=https://your-project.vercel.app
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
 
 _ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+if _FRONTEND_URL:
+    _ALLOWED_ORIGINS.append(_FRONTEND_URL)
 
 _YOLO_MODEL = os.getenv("YOLO_MODEL", "yolov8n.pt")
 _UNET_WEIGHTS = os.getenv("UNET_WEIGHTS", "")
@@ -73,7 +85,7 @@ _DEVICE = _select_device()
 
 
 # ---------------------------------------------------------------------------
-# Startup / shutdown lifespan
+# Startup / shutdown
 # ---------------------------------------------------------------------------
 
 @asynccontextmanager
@@ -105,7 +117,14 @@ async def lifespan(app: FastAPI):
             map_location=_DEVICE,
         )
 
+        # Support checkpoints stored either directly as state_dict
+        # or inside a "state_dict" key.
+        if isinstance(state, dict) and "state_dict" in state:
+            state = state["state_dict"]
+
         generator.load_state_dict(state)
+
+        logger.info("UNet weights loaded successfully.")
 
     else:
         logger.warning(
@@ -122,6 +141,11 @@ async def lifespan(app: FastAPI):
     # YOLO detector
     # ------------------------------------------------------------------
 
+    logger.info(
+        "Loading YOLO detector: %s",
+        _YOLO_MODEL,
+    )
+
     detector = UncertaintyAwareDetector(
         model_path=_YOLO_MODEL,
         device=_DEVICE,
@@ -134,8 +158,8 @@ async def lifespan(app: FastAPI):
     # ------------------------------------------------------------------
     # RAG / Granite agent
     # ------------------------------------------------------------------
-    # Disabled on Render free tier to reduce memory usage.
 
+    # Disabled on Render free tier to reduce memory usage.
     app.state.agent = None
 
     logger.info(
@@ -168,7 +192,7 @@ async def lifespan(app: FastAPI):
 
 
 # ---------------------------------------------------------------------------
-# Application
+# FastAPI application
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
@@ -183,9 +207,24 @@ app = FastAPI(
 )
 
 
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+
 app.add_middleware(
     CORSMiddleware,
+
+    # Explicit origins
     allow_origins=_ALLOWED_ORIGINS,
+
+    # IMPORTANT:
+    # Allows Vercel preview deployments such as:
+    # https://chitra-ai-xxxxx.vercel.app
+    # https://chitra-ai-git-main-xxxxx.vercel.app
+    allow_origin_regex=(
+        r"https://.*\.vercel\.app"
+    ),
+
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -204,11 +243,30 @@ async def health() -> dict:
     return {
         "status": "ok",
         "device": _DEVICE,
+        "service": "chitra.ai",
     }
 
 
 # ---------------------------------------------------------------------------
-# Main endpoint
+# Root endpoint
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/",
+    tags=["ops"],
+)
+async def root() -> dict:
+    return {
+        "status": "ok",
+        "service": "Chitra.ai Thermal Intelligence API",
+        "version": "1.0.0",
+        "device": _DEVICE,
+        "docs": "/docs",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Main thermal analysis endpoint
 # ---------------------------------------------------------------------------
 
 @app.post(
@@ -224,16 +282,19 @@ async def analyze_thermal(
             "(GeoTIFF, PNG, JPEG)"
         ),
     ),
+
     mc_passes: int = Form(
         default=2,
         ge=2,
         le=10,
         description="Monte Carlo forward passes",
     ),
+
     latitude: Optional[float] = Form(
         default=None,
         description="Scene centre latitude (WGS-84)",
     ),
+
     longitude: Optional[float] = Form(
         default=None,
         description="Scene centre longitude (WGS-84)",
@@ -254,11 +315,22 @@ async def analyze_thermal(
 
     raw_bytes: bytes = await file.read()
 
+    if not raw_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Uploaded file is empty.",
+        )
+
     try:
 
-        # ================================================================
+        # ==============================================================
         # STEP 1 — Decode uploaded image
-        # ================================================================
+        # ==============================================================
+
+        logger.info(
+            "Processing uploaded file: %s",
+            file.filename,
+        )
 
         thermal_arr = _decode_thermal_image(
             raw_bytes,
@@ -267,8 +339,13 @@ async def analyze_thermal(
 
         H, W = thermal_arr.shape
 
-        if H < _MIN_SPATIAL or W < _MIN_SPATIAL:
+        logger.info(
+            "Thermal image size: %sx%s",
+            W,
+            H,
+        )
 
+        if H < _MIN_SPATIAL or W < _MIN_SPATIAL:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
@@ -278,7 +355,10 @@ async def analyze_thermal(
                 ),
             )
 
-        # Pad to multiple of 16
+        # ==============================================================
+        # STEP 2 — Pad image
+        # ==============================================================
+
         thermal_arr, (pad_h, pad_w) = (
             _pad_to_multiple(
                 thermal_arr,
@@ -288,9 +368,15 @@ async def analyze_thermal(
 
         H_pad, W_pad = thermal_arr.shape
 
-        # ================================================================
-        # STEP 2 — Normalize thermal image
-        # ================================================================
+        logger.info(
+            "Padded image size: %sx%s",
+            W_pad,
+            H_pad,
+        )
+
+        # ==============================================================
+        # STEP 3 — Normalize thermal image
+        # ==============================================================
 
         input_tensor = normalize_thermal(
             thermal_arr
@@ -302,9 +388,14 @@ async def analyze_thermal(
             .to(_DEVICE)
         )
 
-        # ================================================================
-        # STEP 3 — MC-Dropout inference
-        # ================================================================
+        # ==============================================================
+        # STEP 4 — MC-Dropout inference
+        # ==============================================================
+
+        logger.info(
+            "Running MC inference with %s passes...",
+            mc_passes,
+        )
 
         mc_result = run_mc_inference(
             generator,
@@ -312,7 +403,10 @@ async def analyze_thermal(
             passes=mc_passes,
         )
 
+        # ==============================================================
         # Remove padding safely
+        # ==============================================================
+
         end_h = (
             H_pad - pad_h
             if pad_h
@@ -339,9 +433,9 @@ async def analyze_thermal(
             :end_w,
         ]
 
-        # ================================================================
-        # Uncertainty metrics
-        # ================================================================
+        # ==============================================================
+        # STEP 5 — Uncertainty metrics
+        # ==============================================================
 
         unc_np_full = uncertainty_map_to_numpy(
             unc_map_t
@@ -355,9 +449,9 @@ async def analyze_thermal(
             np.max(unc_np_full)
         )
 
-        # ================================================================
-        # STEP 4 — Convert tensors to numpy
-        # ================================================================
+        # ==============================================================
+        # STEP 6 — Convert tensors to numpy
+        # ==============================================================
 
         rgb_uint8 = tensor_to_uint8_rgb(
             mean_rgb_t
@@ -365,9 +459,13 @@ async def analyze_thermal(
 
         unc_np = unc_np_full
 
-        # ================================================================
-        # STEP 5 — YOLO detection
-        # ================================================================
+        # ==============================================================
+        # STEP 7 — YOLO detection
+        # ==============================================================
+
+        logger.info(
+            "Running YOLO detection..."
+        )
 
         detections = detector.detect(
             rgb_uint8,
@@ -375,9 +473,14 @@ async def analyze_thermal(
             verbose=False,
         )
 
-        # ================================================================
-        # STEP 6 — Coordinates
-        # ================================================================
+        logger.info(
+            "YOLO detected %s object(s).",
+            len(detections),
+        )
+
+        # ==============================================================
+        # STEP 8 — Coordinates
+        # ==============================================================
 
         coords_str: Optional[str] = None
 
@@ -385,14 +488,22 @@ async def analyze_thermal(
             latitude is not None
             and longitude is not None
         ):
-            coords_str = (
-                f"{latitude:.5f}°N "
-                f"{longitude:.5f}°E"
+            lat_direction = (
+                "N" if latitude >= 0 else "S"
             )
 
-        # ================================================================
+            lon_direction = (
+                "E" if longitude >= 0 else "W"
+            )
+
+            coords_str = (
+                f"{abs(latitude):.5f}°{lat_direction} "
+                f"{abs(longitude):.5f}°{lon_direction}"
+            )
+
+        # ==============================================================
         # Analysis metrics
-        # ================================================================
+        # ==============================================================
 
         analysis_metrics = {
             "resolution_h": int(H),
@@ -402,9 +513,9 @@ async def analyze_thermal(
             "mc_passes": mc_passes,
         }
 
-        # ================================================================
-        # STEP 7 — Intelligence briefing
-        # ================================================================
+        # ==============================================================
+        # STEP 9 — Intelligence briefing
+        # ==============================================================
 
         if agent is not None:
 
@@ -428,8 +539,7 @@ async def analyze_thermal(
                     briefing_result.used_fallback
                 ),
                 "retrieved_context_ids": (
-                    briefing_result
-                    .retrieved_context_ids
+                    briefing_result.retrieved_context_ids
                 ),
             }
 
@@ -449,9 +559,13 @@ async def analyze_thermal(
                 "retrieved_context_ids": [],
             }
 
-        # ================================================================
-        # STEP 8 — Encode images
-        # ================================================================
+        # ==============================================================
+        # STEP 10 — Encode images
+        # ==============================================================
+
+        logger.info(
+            "Encoding output images..."
+        )
 
         rgb_b64 = _array_to_base64_png(
             rgb_uint8
@@ -470,9 +584,13 @@ async def analyze_thermal(
             )
         )
 
-        # ================================================================
-        # STEP 9 — Return structured response
-        # ================================================================
+        # ==============================================================
+        # STEP 11 — Return response
+        # ==============================================================
+
+        logger.info(
+            "=== Thermal analysis completed successfully ==="
+        )
 
         return JSONResponse(
             status_code=200,
@@ -484,14 +602,20 @@ async def analyze_thermal(
                         mean_unc,
                         6,
                     ),
+
                     "max_uncertainty": round(
                         max_unc,
                         6,
                     ),
+
                     "mc_passes_executed": (
                         mc_passes
                     ),
+
                     "device": _DEVICE,
+
+                    "resolution_h": int(H),
+                    "resolution_w": int(W),
                 },
 
                 "detections": [
@@ -508,6 +632,7 @@ async def analyze_thermal(
                 },
 
                 "agent_briefing": briefing_text,
+
                 "agent_meta": agent_meta,
             },
         )
@@ -568,7 +693,7 @@ async def analyze_thermal(
         )
 
     # ------------------------------------------------------------------
-    # Any unexpected error
+    # Unexpected errors
     # ------------------------------------------------------------------
 
     except Exception as exc:
@@ -594,7 +719,7 @@ async def analyze_thermal(
 
 
 # ---------------------------------------------------------------------------
-# Image I/O helpers
+# Image decoding
 # ---------------------------------------------------------------------------
 
 def _decode_thermal_image(
@@ -646,8 +771,7 @@ def _decode_tiff(
             ),
             detail=(
                 "rasterio is required to process "
-                "GeoTIFF files. Install it with: "
-                "pip install rasterio"
+                "GeoTIFF files."
             ),
         ) from exc
 
@@ -714,6 +838,10 @@ def _decode_pil_image(
             io.BytesIO(raw_bytes)
         )
 
+        # Force actual decoding now so corrupted/truncated
+        # images fail here rather than later.
+        img.load()
+
     except UnidentifiedImageError as exc:
 
         raise HTTPException(
@@ -726,7 +854,19 @@ def _decode_pil_image(
             ),
         ) from exc
 
-    # Convert multi-channel images to grayscale
+    except Exception as exc:
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                f"Cannot read image "
+                f"'{filename}': {exc}"
+            ),
+        ) from exc
+
+    # Convert multi-channel images to grayscale.
     if img.mode not in (
         "L",
         "I",
@@ -849,6 +989,7 @@ def _heatmap_to_base64_png(
         13
         + (204 - 13)
         * (unc_clipped / 0.5),
+
         204
         + (240 - 204)
         * ((unc_clipped - 0.5) / 0.5),
@@ -859,6 +1000,7 @@ def _heatmap_to_base64_png(
         8
         + (71 - 8)
         * (unc_clipped / 0.5),
+
         71
         + (249 - 71)
         * ((unc_clipped - 0.5) / 0.5),
@@ -869,6 +1011,7 @@ def _heatmap_to_base64_png(
         135
         + (120 - 135)
         * (unc_clipped / 0.5),
+
         120
         + (33 - 120)
         * ((unc_clipped - 0.5) / 0.5),
@@ -938,16 +1081,33 @@ def _bbox_overlay_to_base64_png(
 
     for det in detections:
 
-        adj = det.adjusted_confidence
+        adj = float(
+            det.adjusted_confidence
+        )
 
         if adj >= 0.6:
-            colour = (0, 200, 60)
+
+            colour = (
+                0,
+                200,
+                60,
+            )
 
         elif adj >= 0.3:
-            colour = (255, 160, 0)
+
+            colour = (
+                255,
+                160,
+                0,
+            )
 
         else:
-            colour = (220, 30, 30)
+
+            colour = (
+                220,
+                30,
+                30,
+            )
 
         x1, y1, x2, y2 = det.bbox
 
@@ -956,7 +1116,7 @@ def _bbox_overlay_to_base64_png(
             rgb_uint8.shape[0] // 256,
         )
 
-        # Draw thick bounding box
+        # Draw thick bounding box.
         for offset in range(lw):
 
             draw.rectangle(
